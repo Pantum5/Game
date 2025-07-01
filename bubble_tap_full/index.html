@@ -3,78 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Խաղի մեկնարկ</title>
+  <title>Երկրներ - երկրներ և մայրաքաղաքներ</title>
   <link rel="stylesheet" href="style.css" />
-  <style>
-    /* Минимальные стили для скрытия и позиционирования */
-    #game-container {
-      position: relative;
-      width: 100vw;
-      height: 100vh;
-      overflow: hidden;
-      background: #eef2f7;
-    }
-    #game-canvas {
-      display: block;
-      width: 100%;
-      height: 100%;
-      background: #cce7ff;
-      cursor: pointer;
-    }
-    #end-animation {
-      position: absolute;
-      top: 0; left: 0; width: 100%; height: 100%;
-      background: rgba(0,0,0,0.6);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 60px;
-      font-weight: bold;
-      z-index: 10;
-      user-select: none;
-    }
-    #end-animation.hidden {
-      display: none;
-    }
-    #countdown {
-      margin-bottom: 20px;
-    }
-    #balloon-animation {
-      position: relative;
-      width: 100%;
-      height: 200px;
-      overflow: visible;
-    }
-    @keyframes floatUp {
-      to {
-        transform: translateY(-300px);
-        opacity: 0;
-      }
-    }
-    .balloon {
-      position: absolute;
-      width: 20px;
-      height: 30px;
-      border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
-      animation-timing-function: ease-out;
-      animation-fill-mode: forwards;
-    }
-  </style>
 </head>
 <body>
-  <div id="game-container">
-    <h1>🎯 Խփիր կարմիր պղպջակներին</h1>
-    <canvas id="game-canvas"></canvas>
+  <div id="name-form-container">
+    <form id="name-form">
+      <label for="name-input">Մուտքագրեք ձեր անունը</label><br />
+      <input id="name-input" type="text" autocomplete="off" required />
+      <div id="name-error" style="color: #f44336; font-size: 0.9em; margin-top: 5px; display: none;">
+        Խնդրում ենք մուտքագրել ձեր անունը
+      </div>
+      <button type="submit">Սկսել խաղը</button>
+    </form>
   </div>
 
-  <div id="end-animation" class="hidden">
-    <div id="countdown">3</div>
-    <div id="balloon-animation"></div>
+  <div id="game-area" style="display:none;">
+    <div id="header-bar">
+      <div id="user-name"></div>
+      <div id="score-info"></div>
+    </div>
+    <div id="question-container">
+      <div id="question"></div>
+      <div id="answer-buttons" class="btn-grid"></div>
+    </div>
+    <button id="try-again-btn" style="display:none;">Փորձել նորից</button>
   </div>
-
-  <video id="video" autoplay playsinline style="display:none;"></video>
 
   <script src="script.js"></script>
 </body>
